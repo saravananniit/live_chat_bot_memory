@@ -1,0 +1,707 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#fdf8f6">
+  <title>YourBot</title>
+  <link rel="stylesheet" href="/static/yourbot.css">
+  <script>
+    // Apply the saved theme before the page paints (no flash).
+    try { if (localStorage.getItem("yourbot-theme") === "dark") document.documentElement.classList.add("dark"); } catch (e) {}
+  </script>
+</head>
+<body>
+  <!-- YourBot logo, defined once and reused with <use> -->
+  <svg width="0" height="0" style="position:absolute" aria-hidden="true">
+    <symbol id="logo" viewBox="0 0 40 40">
+      <rect class="logo-bg" width="40" height="40" rx="12"/>
+      <path class="logo-fg" d="M20 8v4" stroke-width="2.2" stroke-linecap="round" fill="none"/>
+      <circle class="logo-fg" cx="14.5" cy="20" r="2.3" stroke="none"/>
+      <circle class="logo-fg" cx="25.5" cy="20" r="2.3" stroke="none"/>
+      <path class="logo-fg" d="M14.5 26.5c2.6 2.4 8.4 2.4 11 0" stroke-width="2.2" stroke-linecap="round" fill="none"/>
+    </symbol>
+  </svg>
+
+  <div class="app">
+    <aside id="sidebar" class="sidebar" aria-label="Conversations">
+      <div class="brand">
+        <svg class="brand-mark"><use href="#logo"/></svg><span>YourBot</span>
+        <span class="spacer"></span>
+        <button class="icon-btn mobile-only" id="closeDrawer" type="button" aria-label="Close menu">✕</button>
+      </div>
+      <button class="btn new-chat" id="newChat" type="button">＋ New chat</button>
+      <input class="search" id="search" name="chat-filter" type="text" inputmode="search" placeholder="Search chats..." aria-label="Search chats" autocomplete="off" readonly data-lpignore="true" data-1p-ignore data-form-type="other">
+      <nav class="history" id="history"></nav>
+      <div class="sidebar-foot">
+        <button class="nav-item" id="openSettings" type="button">
+          <span class="ico">⚙</span><span>Model settings<span class="sub" id="modelInfo"></span></span>
+        </button>
+        <button class="nav-item" id="themeBtn" type="button"><span class="ico">◐</span> Toggle appearance</button>
+        <button class="nav-item" id="logout" type="button"><span class="ico">⇥</span> Log out</button>
+        <div class="user-card">
+          <span class="avatar" id="avatar">Y</span>
+          <div class="user-meta"><strong id="userName">...</strong></div>
+        </div>
+      </div>
+    </aside>
+    <div class="backdrop" id="backdrop"></div>
+
+    <main class="main">
+      <header class="topbar">
+        <button class="icon-btn mobile-only" id="menu" type="button" aria-label="Open menu">☰</button>
+        <div class="topbar-title" id="title">New conversation</div>
+        <span class="chip hidden" id="tokens"></span>
+        <button class="icon-btn" id="themeTop" type="button" aria-label="Toggle appearance">◐</button>
+      </header>
+
+      <div class="scroll" id="scroll">
+        <div class="content">
+          <section id="welcome" class="welcome">
+            <span class="eyebrow">A little space to think</span>
+            <h1>What would you like to explore?</h1>
+            <p>Ask a question, work through an idea, or start with one of these prompts.</p>
+          </section>
+          <section id="suggestions" class="suggestions" aria-label="Suggested prompts">
+            <button class="suggestion" type="button" data-prompt="Help me plan a thoughtful week that balances focused work and rest."><strong>Plan a balanced week</strong><span>Make room for focus, priorities, and a little breathing space.</span></button>
+            <button class="suggestion" type="button" data-prompt="Help me understand a complex topic by breaking it into simple steps."><strong>Make something clearer</strong><span>Break a complex idea into friendly, simple steps.</span></button>
+            <button class="suggestion" type="button" data-prompt="What are the latest headlines in technology today?"><strong>Catch up on the news</strong><span>Search the web for what is happening right now.</span></button>
+            <button class="suggestion" type="button" data-prompt="Help me draft a clear, warm, and concise email."><strong>Write with confidence</strong><span>Shape a note that sounds clear, warm, and like you.</span></button>
+          </section>
+          <section id="thread" class="thread hidden" aria-live="polite"></section>
+        </div>
+      </div>
+
+      <div class="composer-wrap">
+        <div class="banner hidden" id="banner" role="status"><span id="bannerText"></span></div>
+        <form id="composer" class="composer">
+          <textarea id="message" rows="1" placeholder="Message YourBot..." aria-label="Message YourBot"></textarea>
+          <div class="composer-row">
+            <span class="composer-hint">Enter to send · Shift + Enter for a new line</span>
+            <button class="btn send-btn" id="send" type="submit" aria-label="Send message">↑</button>
+          </div>
+        </form>
+        <p class="footnote">YourBot can make mistakes. Please verify important information.</p>
+      </div>
+    </main>
+  </div>
+
+  <!-- Model settings -->
+  <div class="overlay hidden" id="settingsOverlay" role="dialog" aria-modal="true" aria-labelledby="settingsTitle">
+    <div class="modal">
+      <h2 id="settingsTitle">Model settings</h2>
+      <p>Choose the Groq model and add your API key.</p>
+      <div class="field">
+        <label for="modelInput">Model</label>
+        <input id="modelInput" type="text" placeholder="openai/gpt-oss-20b" autocomplete="off" spellcheck="false" data-lpignore="true" data-1p-ignore>
+      </div>
+      <div class="field">
+        <label for="keyInput">Groq API key</label>
+        <input id="keyInput" type="password" placeholder="gsk_..." autocomplete="new-password" spellcheck="false" data-lpignore="true" data-1p-ignore>
+        <label class="show-key"><input type="checkbox" id="showKey"> Show key</label>
+      </div>
+      <label class="toggle-row" for="webInput">
+        <input id="webInput" type="checkbox">
+        <span>Let YourBot search the web (DuckDuckGo)
+          <small>Helps with current events and recent facts. Each search adds tokens, so turn it off if you hit Groq's rate limit.</small>
+        </span>
+      </label>
+      <p class="fine">Saved in this browser only, under your account. It is sent to this app with each message to call Groq and is never written to the database.</p>
+      <div class="modal-actions">
+        <button class="btn btn-secondary" type="button" id="clearKey">Clear key</button>
+        <button class="btn btn-secondary" type="button" id="cancelSettings">Cancel</button>
+        <button class="btn" type="button" id="saveSettings">Save</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Session expired -->
+  <div class="overlay hidden" id="sessionOverlay" role="dialog" aria-modal="true" aria-labelledby="sessionTitle">
+    <div class="modal" style="text-align:center">
+      <div class="modal-icon" style="margin-inline:auto">⌛</div>
+      <h2 id="sessionTitle">Your session has expired</h2>
+      <p>For your privacy you have been logged out. Log in again to continue. Your saved conversations are still here.</p>
+      <div class="modal-actions" style="justify-content:center">
+        <button class="btn btn-secondary" type="button" id="stayHere">Stay here</button>
+        <button class="btn" type="button" id="loginAgain">Log in again</button>
+      </div>
+    </div>
+  </div>
+
+<script>
+  const $ = (id) => document.getElementById(id);
+  const input = $("message");
+  const send = $("send");
+  const thread = $("thread");
+  const DEFAULT_MODEL = "openai/gpt-oss-20b";
+  const FALLBACK = "Something went wrong. Please start a new chat.";
+  let convId = null, email = "", name = "";
+  let settings = { model: DEFAULT_MODEL, apiKey: "", web: true };
+  let convos = [];
+  // Friendly names for the agent's tools, shown under a reply that used them.
+  const TOOL_LABELS = { web_search: "Searched the web", news_search: "Searched the news",
+                        calculator: "Used the calculator", get_current_time: "Checked the time" };
+  let locked = false, busy = false, typingRow = null;
+
+  // ---------- small DOM helpers (everything is built with textContent, never innerHTML) ----------
+  function el(tag, cls, text) {
+    const n = document.createElement(tag);
+    if (cls) n.className = cls;
+    if (text != null) n.textContent = text;
+    return n;
+  }
+  function logo(cls) {
+    const svg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
+    svg.setAttribute("class", cls);
+    const use = document.createElementNS("http://www.w3.org/2000/svg", "use");
+    use.setAttribute("href", "#logo");
+    svg.appendChild(use);
+    return svg;
+  }
+  const scrollDown = () => { const s = $("scroll"); s.scrollTop = s.scrollHeight; };
+
+  // ---------- talking to the server ----------
+  // If the session has expired, show the "session expired" dialog instead of failing quietly.
+  async function api(url, options) {
+    const res = await fetch(url, options);
+    const data = await res.json();
+    if (data.status === "auth_required") { $("sessionOverlay").classList.remove("hidden"); throw new Error("auth"); }
+    return data;
+  }
+  const isAuth = (e) => e && e.message === "auth";
+
+  // ---------- theme ----------
+  function toggleTheme() {
+    const dark = document.documentElement.classList.toggle("dark");
+    try { localStorage.setItem("yourbot-theme", dark ? "dark" : "light"); } catch (e) {}
+  }
+
+  // ---------- settings: model + API key live in this browser only ----------
+  const settingsKey = () => "yourbot-settings:" + email;
+  const convKey = () => "yourbot-conv:" + email;
+
+  function loadSettings() {
+    try {
+      const s = JSON.parse(localStorage.getItem(settingsKey()) || "{}");
+      settings = { model: s.model || DEFAULT_MODEL, apiKey: s.apiKey || "", web: s.web !== false };
+    } catch (e) { settings = { model: DEFAULT_MODEL, apiKey: "", web: true }; }
+    renderModelInfo();
+  }
+  function persistSettings() { try { localStorage.setItem(settingsKey(), JSON.stringify(settings)); } catch (e) {} }
+  function renderModelInfo() {
+    $("modelInfo").textContent = settings.model + " · " + (settings.apiKey ? "key saved" : "no key yet")
+      + (settings.web ? " · web search on" : "");
+  }
+  function openSettings() {
+    $("modelInput").value = settings.model;
+    $("keyInput").value = settings.apiKey;
+    $("webInput").checked = settings.web;
+    $("keyInput").type = "password";
+    $("showKey").checked = false;
+    $("settingsOverlay").classList.remove("hidden");
+    ($("keyInput").value ? $("modelInput") : $("keyInput")).focus();
+  }
+  function closeSettings() { $("settingsOverlay").classList.add("hidden"); }
+
+  // ---------- banner above the composer ----------
+  function setBanner(text, kind, actionLabel, action) {
+    const b = $("banner");
+    b.className = "banner" + (kind === "warn" ? " warn" : "");
+    b.replaceChildren(el("span", null, text));
+    if (actionLabel) {
+      const btn = el("button", "btn", actionLabel);
+      btn.type = "button";
+      btn.onclick = action;
+      b.appendChild(btn);
+    }
+  }
+  function clearBanner() { $("banner").className = "banner hidden"; }
+
+  // ---------- lock / unlock the chat ----------
+  function lockChat(message) {
+    locked = true;
+    input.disabled = true;
+    send.disabled = true;
+    setBanner(message, "warn", "Start new chat", startNewChat);
+  }
+  function unlockChat() {
+    locked = false;
+    input.disabled = false;
+    send.disabled = false;
+    clearBanner();
+    input.focus();
+  }
+
+  // ---------- header bits ----------
+  function setTitle(t) { $("title").textContent = t || "New conversation"; document.title = t ? t + " · YourBot" : "YourBot"; }
+  function showTokens(used, max) {
+    const c = $("tokens");
+    if (used != null && max) { c.textContent = `${used} / ${max} tokens`; c.classList.remove("hidden"); }
+    else c.classList.add("hidden");
+  }
+  const makeTitle = (t) => { t = t.split(/\s+/).join(" "); return t.length > 40 ? t.slice(0, 40).trim() + "…" : t; };
+
+  // ---------- message rendering (safe markdown: headings, lists, tables, quotes, links, code) ----------
+  // Everything is built from DOM nodes + textContent, never innerHTML, so model output cannot inject HTML.
+  const INLINE_RE = /(`[^`\n]+`|\*\*[^\n]+?\*\*|~~[^\n]+?~~|(?<![\w*])\*[^*\s][^*\n]*?(?<!\s)\*(?![\w*])|\[[^\]\n]+\]\(https?:\/\/[^\s)]+\)|https?:\/\/[^\s<>)\]]+)/;
+  const FENCE_RE = /^\s*```\s*([\w+#.-]*)\s*$/;
+  const HEAD_RE = /^\s{0,3}(#{1,6})\s+(.*?)\s*#*\s*$/;
+  const HR_RE = /^\s{0,3}([-*_])(\s*\1){2,}\s*$/;
+  const LIST_RE = /^(\s*)([-*+]|\d{1,9}[.)])\s+(.*)$/;
+  const QUOTE_RE = /^\s{0,3}>\s?/;
+  const SEP_RE = /^\s*\|?\s*:?-+:?\s*(\|\s*:?-+:?\s*)*\|?\s*$/;
+
+  function inline(parent, text) {
+    text.split(INLINE_RE).forEach((tok, idx) => {
+      if (!tok) return;
+      if (idx % 2 === 0) {                                   // plain text (single newlines become line breaks)
+        tok.split("\n").forEach((line, i) => {
+          if (i) parent.appendChild(document.createElement("br"));
+          parent.appendChild(document.createTextNode(line));
+        });
+      } else if (tok[0] === "`") {
+        parent.appendChild(el("code", null, tok.slice(1, -1)));
+      } else if (tok.startsWith("**")) {
+        const n = el("strong"); inline(n, tok.slice(2, -2)); parent.appendChild(n);
+      } else if (tok.startsWith("~~")) {
+        const n = el("del"); inline(n, tok.slice(2, -2)); parent.appendChild(n);
+      } else if (tok[0] === "*") {
+        const n = el("em"); inline(n, tok.slice(1, -1)); parent.appendChild(n);
+      } else if (tok[0] === "[") {
+        const m = /^\[([^\]]+)\]\((.+)\)$/.exec(tok);
+        parent.appendChild(link(m[2], m[1]));
+      } else {                                               // bare URL: keep trailing punctuation outside the link
+        const m = /^(.*?)([.,;:!?]*)$/.exec(tok);
+        parent.appendChild(link(m[1], m[1]));
+        if (m[2]) parent.appendChild(document.createTextNode(m[2]));
+      }
+    });
+  }
+  function link(href, label) {
+    const a = el("a", null, label);
+    a.href = href;                                           // only http(s) URLs ever reach here
+    a.target = "_blank";
+    a.rel = "noopener noreferrer";
+    return a;
+  }
+
+  async function copyText(text, btn, label) {
+    try { await navigator.clipboard.writeText(text); btn.textContent = "Copied"; }
+    catch (e) { btn.textContent = "Copy failed"; }
+    setTimeout(() => { btn.textContent = label; }, 1500);
+  }
+  function codeBlock(lang, code) {
+    const wrap = el("div", "code-block");
+    const head = el("div", "code-head");
+    const btn = el("button", null, "Copy code");
+    btn.type = "button";
+    btn.onclick = () => copyText(code, btn, "Copy code");
+    head.append(el("span", null, lang || "code"), btn);
+    const pre = el("pre");
+    pre.appendChild(el("code", null, code));
+    wrap.append(head, pre);
+    return wrap;
+  }
+
+  const splitRow = (l) => l.trim().replace(/^\|/, "").replace(/\|$/, "").split(/(?<!\\)\|/).map((c) => c.trim().replace(/\\\|/g, "|"));
+  const isTableStart = (lines, i) => lines[i].includes("|") && i + 1 < lines.length && lines[i + 1].includes("-") && SEP_RE.test(lines[i + 1]);
+  const isBlockStart = (lines, i) => FENCE_RE.test(lines[i]) || HEAD_RE.test(lines[i]) || HR_RE.test(lines[i]) ||
+    LIST_RE.test(lines[i]) || QUOTE_RE.test(lines[i]) || isTableStart(lines, i);
+
+  function renderTable(lines, i, parent) {
+    const head = splitRow(lines[i]);
+    const aligns = splitRow(lines[i + 1]).map((c) => c.startsWith(":") && c.endsWith(":") ? "center" : c.endsWith(":") ? "right" : "");
+    const table = el("table"), thead = el("thead"), tbody = el("tbody");
+    const addRow = (section, cells, tag) => {
+      const tr = el("tr");
+      head.forEach((_, c) => {
+        const cell = el(tag);
+        if (aligns[c]) cell.style.textAlign = aligns[c];
+        inline(cell, cells[c] || "");
+        tr.appendChild(cell);
+      });
+      section.appendChild(tr);
+    };
+    addRow(thead, head, "th");
+    i += 2;
+    while (i < lines.length && lines[i].trim() && lines[i].includes("|")) addRow(tbody, splitRow(lines[i++]), "td");
+    table.append(thead, tbody);
+    const wrap = el("div", "table-wrap");
+    wrap.appendChild(table);
+    parent.appendChild(wrap);
+    return i;
+  }
+
+  function renderList(lines, i, parent) {
+    const first = LIST_RE.exec(lines[i]);
+    const indent = first[1].length, ordered = /\d/.test(first[2]);
+    const list = el(ordered ? "ol" : "ul");
+    if (ordered && parseInt(first[2], 10) !== 1) list.start = parseInt(first[2], 10);
+    let li = null;
+    while (i < lines.length) {
+      const line = lines[i];
+      if (!line.trim()) {                                    // blank line: list goes on only if another item follows
+        let j = i + 1;
+        while (j < lines.length && !lines[j].trim()) j++;
+        const next = j < lines.length ? LIST_RE.exec(lines[j]) : null;
+        if (next && next[1].length >= indent && !HR_RE.test(lines[j])) { i = j; continue; }
+        break;
+      }
+      if (HR_RE.test(line)) break;
+      const m = LIST_RE.exec(line);
+      if (m && m[1].length > indent && li) { i = renderList(lines, i, li); continue; }   // nested list
+      if (m && m[1].length === indent) { li = el("li"); inline(li, m[3]); list.appendChild(li); i++; continue; }
+      if (m) break;                                          // shallower item: the parent list handles it
+      if (li && /^\s/.test(line) && !isBlockStart(lines, i)) {   // wrapped text of the current item
+        li.appendChild(document.createElement("br"));
+        inline(li, line.trim());
+        i++;
+        continue;
+      }
+      break;
+    }
+    parent.appendChild(list);
+    return i;
+  }
+
+  function renderRich(container, text) {
+    const lines = String(text).replace(/\r\n?/g, "\n").replace(/\t/g, "    ").split("\n");
+    let i = 0, m;
+    while (i < lines.length) {
+      const line = lines[i];
+      if (!line.trim()) { i++; continue; }
+      if ((m = FENCE_RE.exec(line))) {                       // ``` code block (an unclosed one runs to the end)
+        const buf = [];
+        i++;
+        while (i < lines.length && !/^\s*```/.test(lines[i])) buf.push(lines[i++]);
+        i++;
+        container.appendChild(codeBlock(m[1], buf.join("\n")));
+      } else if ((m = HEAD_RE.exec(line))) {
+        const h = el("h" + m[1].length);
+        inline(h, m[2]);
+        container.appendChild(h);
+        i++;
+      } else if (HR_RE.test(line)) {
+        container.appendChild(el("hr"));
+        i++;
+      } else if (isTableStart(lines, i)) {
+        i = renderTable(lines, i, container);
+      } else if (QUOTE_RE.test(line)) {
+        const buf = [];
+        while (i < lines.length && QUOTE_RE.test(lines[i])) buf.push(lines[i++].replace(QUOTE_RE, ""));
+        const bq = el("blockquote");
+        renderRich(bq, buf.join("\n"));
+        container.appendChild(bq);
+      } else if (LIST_RE.test(line)) {
+        i = renderList(lines, i, container);
+      } else {                                               // paragraph: runs until a blank line or another block
+        const buf = [line.trim()];
+        i++;
+        while (i < lines.length && lines[i].trim() && !isBlockStart(lines, i)) buf.push(lines[i++].trim());
+        const p = el("p");
+        inline(p, buf.join("\n"));
+        container.appendChild(p);
+      }
+    }
+  }
+
+  function showThread() {
+    $("welcome").classList.add("hidden");
+    $("suggestions").classList.add("hidden");
+    thread.classList.remove("hidden");
+  }
+  function showWelcome() {
+    thread.replaceChildren();
+    thread.classList.add("hidden");
+    $("welcome").classList.remove("hidden");
+    $("suggestions").classList.remove("hidden");
+  }
+
+  function addMessage(role, text, tools) {
+    showThread();
+    const row = el("article", "message " + role);
+    const col = el("div", "message-col");
+    const body = el("div", "message-body");
+    if (role === "assistant") {
+      row.appendChild(logo("brand-mark sm"));
+      renderRich(body, text);
+      col.appendChild(body);
+      const used = (tools || []).map((t) => TOOL_LABELS[t]).filter(Boolean);   // live replies only; not saved in the DB
+      if (used.length) col.appendChild(el("div", "used", "🔎 " + used.join(" · ")));
+      const actions = el("div", "actions");
+      const copy = el("button", null, "Copy");
+      copy.type = "button";
+      copy.onclick = () => copyText(text, copy, "Copy");
+      actions.appendChild(copy);
+      col.appendChild(actions);
+    } else {
+      body.textContent = text;
+      col.appendChild(body);
+    }
+    row.appendChild(col);
+    thread.appendChild(row);
+    scrollDown();
+    return row;
+  }
+  function showTyping() {
+    typingRow = el("article", "message assistant");
+    typingRow.appendChild(logo("brand-mark sm"));
+    const dots = el("div", "typing");
+    dots.append(el("i"), el("i"), el("i"));
+    typingRow.appendChild(dots);
+    thread.appendChild(typingRow);
+    scrollDown();
+  }
+  function removeTyping() { if (typingRow) { typingRow.remove(); typingRow = null; } }
+
+  // ---------- sidebar: grouped history + search ----------
+  const parseTs = (ts) => new Date(ts.replace(" ", "T") + "Z");   // DB times are UTC
+  function bucket(ts) {
+    const d = parseTs(ts), now = new Date();
+    const day = (x) => new Date(x.getFullYear(), x.getMonth(), x.getDate()).getTime();
+    const diff = Math.round((day(now) - day(d)) / 86400000);
+    return diff <= 0 ? "Today" : diff === 1 ? "Yesterday" : diff <= 7 ? "Previous 7 days" : "Older";
+  }
+  function renderHistory(reveal) {
+    const box = $("history");
+    const keep = box.scrollTop;
+    const q = $("search").value.trim().toLowerCase();
+    const shown = convos.filter((c) => c.title.toLowerCase().includes(q));
+    box.replaceChildren();
+    if (!shown.length) { box.appendChild(el("div", "empty", convos.length ? "No chats match." : "No conversations yet.")); return; }
+    ["Today", "Yesterday", "Previous 7 days", "Older"].forEach((label) => {
+      const group = shown.filter((c) => bucket(c.updated_at) === label);
+      if (!group.length) return;
+      box.appendChild(el("div", "group-label", label));
+      group.forEach((c) => {
+        const b = el("button", "convo" + (c.id === convId ? " active" : ""));
+        b.type = "button";
+        const meta = el("span", "m", parseTs(c.updated_at).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }));
+        if (c.status === "closed") meta.appendChild(el("span", "badge", "full"));
+        b.append(el("span", "t", c.title), meta);
+        b.onclick = () => openChat(c.id);
+        box.appendChild(b);
+      });
+    });
+    box.scrollTop = keep;                                   // a re-render must not jump the list to the top
+    if (reveal === true) {                                  // after refresh / opening: make sure the open chat is visible
+      const a = box.querySelector(".convo.active");
+      if (a) a.scrollIntoView({ block: "nearest" });
+    }
+  }
+  async function refreshSidebar() {
+    try {
+      const data = await api("/conversations");
+      if (data.status !== "ok" || !Array.isArray(data.conversations)) {
+        throw new Error(data.message || "History request failed.");
+      }
+      convos = data.conversations;
+      renderHistory(true);
+    } catch (e) {
+      if (!isAuth(e)) {
+        console.error("Could not load conversation history:", e);
+        $("history").replaceChildren(el("div", "empty", "Could not load history."));
+      }
+    }
+  }
+
+  // ---------- opening / starting chats ----------
+  function closeDrawer() { $("sidebar").classList.remove("open"); $("backdrop").classList.remove("open"); }
+
+  let openSeq = 0;
+  async function openChat(id) {
+    const mine = ++openSeq;                                  // only the latest click may draw
+    closeDrawer();
+    clearBanner();
+    try {
+      const data = await api(`/conversations/${id}/messages`);
+      if (mine !== openSeq) return true;
+      if (data.status !== "ok" && data.status !== "limit_reached") {
+        setBanner(data.message || "Could not open this conversation. Please try again.", "warn");
+        return false;
+      }
+      if (!Array.isArray(data.messages)) {
+        throw new Error("Conversation response did not include messages.");
+      }
+      convId = id;
+      try { localStorage.setItem(convKey(), id); } catch (e) {}
+      thread.replaceChildren();
+      if (data.messages.length) data.messages.forEach((m) => addMessage(m.role, m.content)); else showWelcome();
+      setTitle(data.messages.length ? data.title : "");
+      showTokens(data.total_tokens, data.max_tokens);
+      if (data.status === "limit_reached") lockChat(data.message); else unlockChat();
+    } catch (e) {
+      if (mine !== openSeq) return false;
+      if (!isAuth(e)) lockChat(FALLBACK);
+      return false;
+    }
+    renderHistory(true);
+    return true;
+  }
+
+  async function startNewChat() {
+    ++openSeq;
+    closeDrawer();
+    try {
+      const data = await api("/conversations", { method: "POST" });
+      convId = data.conversation_id;
+      try { localStorage.setItem(convKey(), convId); } catch (e) {}
+      showWelcome();
+      setTitle("");
+      showTokens(null, null);
+      unlockChat();
+    } catch (e) {
+      if (!isAuth(e)) lockChat(FALLBACK);
+    }
+    renderHistory();
+  }
+
+  // ---------- sending a message ----------
+  async function sendMessage(raw) {
+    const text = raw.trim();
+    if (!text || locked || busy) return;
+
+    if (!settings.apiKey) {            // no key yet: ask for it and keep what the user typed
+      input.value = text;
+      setBanner("Please add your Groq API key in Model settings first.", "info");
+      openSettings();
+      return;
+    }
+
+    clearBanner();
+    const sentConv = convId;           // the chat this message belongs to (the user may click another chat while we wait)
+    input.value = "";
+    autosize();
+    const bubble = addMessage("user", text);
+    busy = true;
+    send.disabled = true;
+    showTyping();
+
+    // Fixable problem: nothing was saved, so take the message back and let the user retry.
+    const giveBack = (note) => {
+      bubble.remove();
+      if (!thread.children.length) showWelcome();
+      input.value = text;
+      autosize();
+      if (note) setBanner(note, "warn");
+    };
+
+    try {
+      const data = await api("/chat", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ conversation_id: convId, message: text,
+                               api_key: settings.apiKey, model: settings.model,
+                               web_search: settings.web }),
+      });
+      removeTyping();
+      if (sentConv !== convId) {
+        // The user moved to another chat while this reply was being written. It is saved on the server
+        // (it will show when that chat is opened); do not draw it into the chat now on screen.
+        if (data.status === "settings_error" || data.status === "rate_limited") { /* nothing saved */ }
+      } else {
+        if (data.reply) {
+          addMessage("assistant", data.reply, data.tools);
+          if ($("title").textContent === "New conversation") setTitle(makeTitle(text));
+        }
+        showTokens(data.total_tokens, data.max_tokens);
+
+        if (data.status === "settings_error" || data.status === "rate_limited") {
+          giveBack(data.message);
+          if (data.status === "settings_error") openSettings();
+        } else if (data.status !== "ok") {
+          lockChat(data.message || FALLBACK);
+        }
+      }
+    } catch (err) {
+      removeTyping();
+      if (sentConv === convId) { if (isAuth(err)) giveBack(null); else lockChat(FALLBACK); }
+    }
+    busy = false;
+    if (!locked) { send.disabled = false; input.focus(); }
+    refreshSidebar();
+  }
+
+  function autosize() {
+    input.style.height = "auto";
+    input.style.height = Math.min(input.scrollHeight, 180) + "px";
+  }
+
+  // ---------- wiring ----------
+  $("composer").addEventListener("submit", (e) => { e.preventDefault(); sendMessage(input.value); });
+  input.addEventListener("keydown", (e) => {
+    if (e.key === "Enter" && !e.shiftKey && !e.isComposing) { e.preventDefault(); $("composer").requestSubmit(); }
+  });
+  input.addEventListener("input", autosize);
+  document.querySelectorAll("[data-prompt]").forEach((b) => b.addEventListener("click", () => sendMessage(b.dataset.prompt)));
+
+  $("newChat").onclick = startNewChat;
+  $("search").addEventListener("focus", (e) => e.target.removeAttribute("readonly"));
+  $("search").addEventListener("input", () => renderHistory());
+  $("themeBtn").onclick = toggleTheme;
+  $("themeTop").onclick = toggleTheme;
+  $("menu").onclick = () => { $("sidebar").classList.add("open"); $("backdrop").classList.add("open"); };
+  $("closeDrawer").onclick = closeDrawer;
+  $("backdrop").onclick = closeDrawer;
+  $("logout").onclick = async () => {
+    try { await fetch("/auth/logout", { method: "POST" }); } catch (e) {}
+    location.href = "/login";
+  };
+
+  $("openSettings").onclick = () => { closeDrawer(); openSettings(); };
+  $("cancelSettings").onclick = closeSettings;
+  $("showKey").onchange = (e) => { $("keyInput").type = e.target.checked ? "text" : "password"; };
+  $("saveSettings").onclick = () => {
+    settings = { model: $("modelInput").value.trim() || DEFAULT_MODEL, apiKey: $("keyInput").value.trim(),
+                 web: $("webInput").checked };
+    persistSettings();
+    renderModelInfo();
+    clearBanner();
+    closeSettings();
+    if (!locked) input.focus();
+  };
+  $("clearKey").onclick = () => {
+    settings.apiKey = "";
+    $("keyInput").value = "";
+    persistSettings();
+    renderModelInfo();
+  };
+  $("settingsOverlay").addEventListener("click", (e) => { if (e.target.id === "settingsOverlay") closeSettings(); });
+  $("stayHere").onclick = () => $("sessionOverlay").classList.add("hidden");
+  $("loginAgain").onclick = () => { location.href = "/login"; };
+  document.addEventListener("keydown", (e) => {
+    if (e.key === "Escape") { closeSettings(); $("sessionOverlay").classList.add("hidden"); closeDrawer(); }
+  });
+
+  // ---------- start ----------
+  (async function init() {
+    $("search").value = "";
+    try {
+      const me = await api("/auth/me");
+      email = me.email; name = me.name || me.email.split("@")[0];
+    } catch (e) { return;     }
+    $("userName").textContent = name;
+    $("avatar").textContent = name.trim().charAt(0).toUpperCase() || "Y";
+    loadSettings();
+    await refreshSidebar();
+    let saved = null;
+    try { saved = localStorage.getItem(convKey()); } catch (e) {}
+    let opened = false;
+    if (saved) opened = await openChat(Number(saved));
+    if (!opened) {                                  // first visit, or the remembered chat no longer exists
+      try { localStorage.removeItem(convKey()); } catch (e) {}
+      clearBanner();
+      await startNewChat();
+    }
+    if (!settings.apiKey) {                         // no key yet: ask for it right away
+      setBanner("Add your Groq API key in Model settings to start chatting.", "info");
+      openSettings();
+    }
+    // Safety net: if the browser still autofills the login email into the search box, clear it.
+    [300, 1200].forEach((ms) => setTimeout(() => {
+      if ($("search").value && $("search").value.toLowerCase() === email.toLowerCase()) { $("search").value = ""; renderHistory(); }
+    }, ms));
+  })();
+</script>
+</body>
+</html>

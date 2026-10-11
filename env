@@ -1,0 +1,10 @@
+# YourBot: the Groq API key and model name are typed in the UI (Model settings), not here.
+
+# Limits (sized for Groq free tier gpt-oss-20b: 8K tokens/minute)
+MAX_CHAT_TOKENS=4000      # chat is closed after this many tokens
+CONTEXT_SOFT_LIMIT=1000   # older messages get summarized above this
+KEEP_RECENT=4             # most recent messages always kept as-is
+
+# Optional
+# DB_PATH=path/to/chat.db   # defaults to chat.db next to db.py
+# COOKIE_SECURE=1         # set to 1 when the app is served over HTTPS
